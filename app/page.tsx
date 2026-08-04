@@ -42,10 +42,10 @@ export default function HomePage() {
       <div className="scoreboard px-6 pt-10 pb-8">
         <p className="font-mono text-xs tracking-[0.25em] uppercase opacity-70">Cuadrante</p>
         <h1 className="font-display text-3xl font-semibold mt-2 leading-tight">
-          Â¿QuiÃ©n<br />juega?
+          Quien<br />juega?
         </h1>
         <p className="text-sm opacity-70 mt-3">
-          CreÃ¡ el evento, compartilo por WhatsApp,<br />mirÃ¡ quiÃ©n confirma. Nada mÃ¡s.
+          Crea el evento, compartilo por WhatsApp,<br />mira quien confirma. Nada mas.
         </p>
       </div>
 
@@ -60,7 +60,7 @@ export default function HomePage() {
 
       <div className="px-6 mt-8 pb-10 flex-1">
         <p className="font-mono text-xs tracking-widest uppercase text-gray-400 mb-3">
-          {loading ? "Cargando..." : events.length ? "Eventos" : "TodavÃ­a no hay eventos"}
+          {loading ? "Cargando..." : events.length ? "Eventos" : "Todavia no hay eventos"}
         </p>
         <div className="space-y-3">
           {events.map((ev) => (
@@ -86,7 +86,7 @@ export default function HomePage() {
           ))}
         </div>
         {!loading && events.length === 0 && (
-          <p className="text-sm text-gray-400 mt-2">CreÃ¡ el primero y compartilo por WhatsApp.</p>
+          <p className="text-sm text-gray-400 mt-2">Crea el primero y compartilo por WhatsApp.</p>
         )}
       </div>
 
@@ -157,11 +157,11 @@ function CreateEventModal({
             </select>
           </div>
           <div>
-            <label className="text-xs font-mono uppercase text-gray-400">TÃ­tulo</label>
+            <label className="text-xs font-mono uppercase text-gray-400">Titulo</label>
             <input
               name="title"
               required
-              placeholder="FÃºtbol 5 de los jueves"
+              placeholder="Futbol 5 de los jueves"
               className="w-full border border-gray-200 rounded-lg p-3 mt-1"
             />
           </div>
