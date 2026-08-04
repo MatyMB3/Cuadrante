@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  background: #F7F6F3;
+  color: #12181B;
+}
+
+.scoreboard {
+  background: #0E3B2E;
+  background-image: linear-gradient(#1F5A45 1px, transparent 1px);
+  background-size: 100% 8px;
+  color: #EFE7D8;
+}
+
+.card {
+  box-shadow: 0 1px 0 rgba(18,24,27,0.06), 0 8px 24px -12px rgba(18,24,27,0.12);
+}
+
+.btn-press:active {
+  transform: scale(0.97);
+}
