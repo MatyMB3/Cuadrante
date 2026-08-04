@@ -3,10 +3,10 @@ export type EventType =
   | "voley" | "running" | "ciclismo" | "asado" | "reunion" | "otro";
 
 export const TYPE_LABEL: Record<EventType, string> = {
-  futbol: "⚽ Fútbol", basquet: "🏀 Básquet", padel: "🎾 Pádel",
-  rugby: "🏉 Rugby", hockey: "🏑 Hockey", voley: "🏐 Vóley",
-  running: "🏃 Running", ciclismo: "🚴 Ciclismo", asado: "🔥 Asado",
-  reunion: "👥 Reunión", otro: "📌 Evento"
+  futbol: "âš½ Futbol", basquet: "ðŸ€ Basquet", padel: "ðŸŽ¾ Padel",
+  rugby: "ðŸ‰ Rugby", hockey: "ðŸ‘ Hockey", voley: "ðŸ Voley",
+  running: "ðŸƒ Running", ciclismo: "ðŸš´ Ciclismo", asado: "ðŸ”¥ Asado",
+  reunion: "ðŸ‘¥ Reunion", otro: "ðŸ“Œ Evento"
 };
 
 export type EventRow = {
@@ -34,9 +34,9 @@ export type ParticipantRow = {
 
 export function fmtDate(iso: string) {
   const d = new Date(iso);
-  const dias = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+  const dias = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
   const meses = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
   const hh = d.getHours().toString().padStart(2, "0");
   const mm = d.getMinutes().toString().padStart(2, "0");
-  return `${dias[d.getDay()]} ${d.getDate()} ${meses[d.getMonth()]} · ${hh}:${mm}hs`;
+  return `${dias[d.getDay()]} ${d.getDate()} ${meses[d.getMonth()]} Â· ${hh}:${mm}hs`;
 }
