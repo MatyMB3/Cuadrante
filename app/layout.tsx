@@ -14,8 +14,8 @@ const mono = IBM_Plex_Mono({
 const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"] });
 
 export const metadata = {
-  title: "Cuadrante — ¿Quién juega?",
-  description: "Organizá eventos deportivos entre amigos sin llenar el grupo de WhatsApp."
+  title: "Cuadrante â€” Quien juega?",
+  description: "Organiza eventos deportivos entre amigos sin llenar el grupo de WhatsApp."
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
