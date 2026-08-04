@@ -1,218 +1,220 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
-import { supabase, DEFAULT_ORGANIZER_ID } from "@/lib/supabase";
-import { EventRow, EventType, TYPE_LABEL, fmtDate } from "@/lib/types";
+import { supabase } from "@/lib/supabase";
+import { EventRow, ParticipantRow, TYPE_LABEL, fmtDate } from "@/lib/types";
 
-export default function HomePage() {
-  const [events, setEvents] = useState<(EventRow & { going_count: number })[]>([]);
-  const [showForm, setShowForm] = useState(false);
+export default function EventPage() {
+  const params = useParams();
+  const id = params.id as string;
+
+  const [event, setEvent] = useState<EventRow | null>(null);
+  const [participants, setParticipants] = useState<ParticipantRow[]>([]);
+  const [myPid, setMyPid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function loadEvents() {
-    setLoading(true);
-    const { data: evs } = await supabase
-      .from("events")
+  async function load() {
+    const { data: ev } = await supabase.from("events").select("*").eq("id", id).single();
+    const { data: parts } = await supabase
+      .from("participants")
       .select("*")
-      .order("starts_at", { ascending: true });
-
-    if (evs) {
-      const withCounts = await Promise.all(
-        evs.map(async (ev) => {
-          const { count } = await supabase
-            .from("participants")
-            .select("*", { count: "exact", head: true })
-            .eq("event_id", ev.id)
-            .eq("status", "going");
-          return { ...ev, going_count: count || 0 };
-        })
-      );
-      setEvents(withCounts as any);
-    }
+      .eq("event_id", id)
+      .order("joined_at", { ascending: true });
+    setEvent(ev as EventRow);
+    setParticipants((parts as ParticipantRow[]) || []);
     setLoading(false);
   }
 
   useEffect(() => {
-    loadEvents();
-  }, []);
+    load();
+    const stored = sessionStorage.getItem(`cuadrante_pid_${id}`);
+    if (stored) setMyPid(stored);
+
+    const channel = supabase
+      .channel(`event-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "participants", filter: `event_id=eq.${id}` },
+        () => load()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  if (loading) return <div className="p-6 text-sm text-gray-400">Cargando...</div>;
+  if (!event)
+    return (
+      <div className="p-6">
+        <p>No encontramos este evento.</p>
+        <Link href="/" className="text-sm underline">Volver</Link>
+      </div>
+    );
+
+  const going = participants.filter((p) => p.status === "going");
+  const pending = participants.filter((p) => p.status === "pending");
+  const notGoing = participants.filter((p) => p.status === "not_going");
+  const waitlist = participants.filter((p) => p.status === "waitlist");
+  const isFull = !!event.max_slots && going.length >= event.max_slots;
+  const mine = participants.find((p) => p.id === myPid);
+
+  async function respond(status: "going" | "not_going" | "waitlist") {
+    let pid = myPid;
+    if (!pid) {
+      const name = prompt("Tu nombre para que te vean en la lista:");
+      if (!name) return;
+      const { data, error } = await supabase
+        .from("participants")
+        .insert({ event_id: id, name: name.trim(), status })
+        .select()
+        .single();
+      if (error || !data) {
+        alert("No pudimos guardar tu respuesta. Proba de nuevo.");
+        return;
+      }
+      pid = data.id as string;
+      sessionStorage.setItem(`cuadrante_pid_${id}`, pid as string);
+      setMyPid(pid as string);
+    } else {
+      await supabase
+        .from("participants")
+        .update({ status, responded_at: new Date().toISOString() })
+        .eq("id", pid);
+    }
+    load();
+  }
+
+  function shareWhatsApp() {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    const msg = `${TYPE_LABEL[event!.type]} ${event!.title}\n${fmtDate(event!.starts_at)}${
+      event!.location ? " Â· " + event!.location : ""
+    }${event!.price ? " Â· $" + event!.price : ""}\n\nConfirma aca ðŸ‘‰ ${url}`;
+    window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
+  }
 
   return (
     <>
-      <div className="scoreboard px-6 pt-10 pb-8">
-        <p className="font-mono text-xs tracking-[0.25em] uppercase opacity-70">Cuadrante</p>
-        <h1 className="font-display text-3xl font-semibold mt-2 leading-tight">
-          Quien<br />juega?
-        </h1>
-        <p className="text-sm opacity-70 mt-3">
-          Crea el evento, compartilo por WhatsApp,<br />mira quien confirma. Nada mas.
+      <div className="scoreboard px-6 pt-8 pb-7">
+        <Link href="/" className="font-mono text-xs opacity-60 uppercase tracking-widest">
+          â† Cuadrante
+        </Link>
+        <p className="font-mono text-xs opacity-70 mt-3">{TYPE_LABEL[event.type]}</p>
+        <h1 className="font-display text-2xl font-semibold mt-1 leading-tight">{event.title}</h1>
+        <p className="text-sm opacity-80 mt-2">
+          {fmtDate(event.starts_at)}
+          {event.location ? ` Â· ${event.location}` : ""}
         </p>
-      </div>
+        {event.price ? <p className="text-sm opacity-80">${event.price}</p> : null}
 
-      <div className="px-6 -mt-5">
-        <button
-          onClick={() => setShowForm(true)}
-          className="btn-press w-full bg-ink text-white rounded-xl py-4 font-display font-semibold text-base card transition-transform"
-        >
-          + Crear evento
-        </button>
-      </div>
-
-      <div className="px-6 mt-8 pb-10 flex-1">
-        <p className="font-mono text-xs tracking-widest uppercase text-gray-400 mb-3">
-          {loading ? "Cargando..." : events.length ? "Eventos" : "Todavia no hay eventos"}
-        </p>
-        <div className="space-y-3">
-          {events.map((ev) => (
-            <Link
-              key={ev.id}
-              href={`/e/${ev.id}`}
-              className="btn-press block bg-white rounded-xl p-4 card flex items-center justify-between transition-transform"
-            >
-              <div>
-                <p className="text-xs text-gray-400 font-mono">{TYPE_LABEL[ev.type]}</p>
-                <p className="font-semibold font-display">{ev.title}</p>
-                <p className="text-xs text-gray-400 mt-1">{fmtDate(ev.starts_at)}</p>
-              </div>
-              <div className="text-right font-mono">
-                <p className="text-lg font-semibold text-field">
-                  {ev.going_count}{ev.max_slots ? `/${ev.max_slots}` : ""}
-                </p>
-                <p className="text-[10px] text-gray-400 uppercase tracking-wide">
-                  {ev.status === "full" ? "completo" : "confirmados"}
-                </p>
-              </div>
-            </Link>
-          ))}
+        <div className="mt-6">
+          <p className="font-mono text-4xl font-semibold">
+            {going.length}
+            {event.max_slots ? ` / ${event.max_slots}` : ""}
+          </p>
+          <p className="font-mono text-xs opacity-60 uppercase tracking-widest mt-1">
+            {event.max_slots
+              ? isFull
+                ? "Evento completo"
+                : `Faltan ${event.max_slots - going.length}`
+              : "Confirmados"}
+          </p>
         </div>
-        {!loading && events.length === 0 && (
-          <p className="text-sm text-gray-400 mt-2">Crea el primero y compartilo por WhatsApp.</p>
-        )}
       </div>
 
-      {showForm && (
-        <CreateEventModal
-          onClose={() => setShowForm(false)}
-          onCreated={() => {
-            setShowForm(false);
-            loadEvents();
-          }}
-        />
-      )}
+      <div className="px-6 pt-6">
+        {!mine ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => respond("going")}
+                disabled={isFull}
+                className="btn-press rounded-xl py-4 font-display font-semibold text-white bg-going disabled:opacity-40"
+              >
+                âœ… Voy
+              </button>
+              <button
+                onClick={() => respond("not_going")}
+                className="btn-press rounded-xl py-4 font-display font-semibold text-white bg-notgoing"
+              >
+                âŒ No voy
+              </button>
+            </div>
+            {isFull && (
+              <button
+                onClick={() => respond("waitlist")}
+                className="btn-press w-full mt-3 rounded-xl py-3 border border-gold text-ink font-display font-medium"
+              >
+                Entrar como suplente
+              </button>
+            )}
+          </>
+        ) : (
+          <div className="bg-white rounded-xl p-4 card flex items-center justify-between">
+            <p className="text-sm">
+              Tu estado:{" "}
+              <b>
+                {mine.status === "going"
+                  ? "ðŸŸ¢ Voy"
+                  : mine.status === "not_going"
+                  ? "ðŸ”´ No voy"
+                  : "ðŸŸ¡ Suplente"}
+              </b>
+            </p>
+            <button
+              onClick={() => {
+                setMyPid(null);
+                sessionStorage.removeItem(`cuadrante_pid_${id}`);
+              }}
+              className="font-mono text-xs underline text-gray-500"
+            >
+              Cambiar
+            </button>
+          </div>
+        )}
+
+        <button
+          onClick={shareWhatsApp}
+          className="btn-press w-full mt-4 rounded-xl py-3 bg-[#25D366] text-white font-display font-semibold text-sm"
+        >
+          Compartir por WhatsApp
+        </button>
+
+        <div className="mt-7 space-y-4 pb-10">
+          <ParticipantGroup label="ðŸŸ¢ Van" list={going} />
+          <ParticipantGroup label="ðŸŸ¡ Pendientes" list={pending} muted />
+          <ParticipantGroup label="ðŸ”´ No van" list={notGoing} muted />
+          <ParticipantGroup label="â³ Lista de espera" list={waitlist} muted />
+        </div>
+      </div>
     </>
   );
 }
 
-function CreateEventModal({
-  onClose,
-  onCreated
+function ParticipantGroup({
+  label,
+  list,
+  muted
 }: {
-  onClose: () => void;
-  onCreated: () => void;
+  label: string;
+  list: ParticipantRow[];
+  muted?: boolean;
 }) {
-  const [saving, setSaving] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setSaving(true);
-    const fd = new FormData(e.currentTarget);
-    const maxSlots = fd.get("maxSlots");
-    const price = fd.get("price");
-
-    const { error } = await supabase.from("events").insert({
-      organizer_id: DEFAULT_ORGANIZER_ID,
-      type: fd.get("type") as EventType,
-      title: fd.get("title") as string,
-      starts_at: new Date(fd.get("startsAt") as string).toISOString(),
-      location: (fd.get("location") as string) || null,
-      max_slots: maxSlots ? parseInt(maxSlots as string) : null,
-      price: price ? parseInt(price as string) : null,
-      status: "open"
-    });
-
-    setSaving(false);
-    if (error) {
-      alert("Hubo un problema creando el evento: " + error.message);
-      return;
-    }
-    onCreated();
-  }
-
+  if (!list.length) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50">
-      <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display text-xl font-semibold">Nuevo evento</h2>
-          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">
-            &times;
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-xs font-mono uppercase text-gray-400">Tipo</label>
-            <select name="type" className="w-full border border-gray-200 rounded-lg p-3 mt-1">
-              {Object.entries(TYPE_LABEL).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-mono uppercase text-gray-400">Titulo</label>
-            <input
-              name="title"
-              required
-              placeholder="Futbol 5 de los jueves"
-              className="w-full border border-gray-200 rounded-lg p-3 mt-1"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-mono uppercase text-gray-400">Fecha y hora</label>
-            <input
-              name="startsAt"
-              type="datetime-local"
-              required
-              className="w-full border border-gray-200 rounded-lg p-3 mt-1"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-mono uppercase text-gray-400">Lugar</label>
-            <input
-              name="location"
-              placeholder="Cancha Norte"
-              className="w-full border border-gray-200 rounded-lg p-3 mt-1"
-            />
-          </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="text-xs font-mono uppercase text-gray-400">Cupos (opcional)</label>
-              <input
-                name="maxSlots"
-                type="number"
-                min={1}
-                placeholder="10"
-                className="w-full border border-gray-200 rounded-lg p-3 mt-1"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="text-xs font-mono uppercase text-gray-400">Precio (opcional)</label>
-              <input
-                name="price"
-                type="number"
-                min={0}
-                placeholder="3000"
-                className="w-full border border-gray-200 rounded-lg p-3 mt-1"
-              />
-            </div>
-          </div>
-          <button
-            type="submit"
-            disabled={saving}
-            className="btn-press w-full bg-ink text-white rounded-xl py-4 font-display font-semibold mt-2 disabled:opacity-50"
-          >
-            {saving ? "Creando..." : "Crear evento"}
-          </button>
-        </form>
-      </div>
+    <div>
+      <p className="font-mono text-xs uppercase tracking-widest text-gray-400 mb-2">
+        {label} ({list.length})
+      </p>
+      {list.map((p) => (
+        <p key={p.id} className={`text-sm py-1 ${muted ? "text-gray-500" : ""}`}>
+          {p.name}
+        </p>
+      ))}
     </div>
   );
 }
