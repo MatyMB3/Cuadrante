@@ -77,9 +77,9 @@ export default function EventPage() {
         alert("No pudimos guardar tu respuesta. ProbÃ¡ de nuevo.");
         return;
       }
-      pid = data.id;
-      sessionStorage.setItem(`cuadrante_pid_${id}`, pid);
-      setMyPid(pid);
+      pid = data.id as string;
+      sessionStorage.setItem(`cuadrante_pid_${id}`, pid as string);
+      setMyPid(pid as string);
     } else {
       await supabase
         .from("participants")
