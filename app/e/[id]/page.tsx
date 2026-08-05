@@ -14,6 +14,7 @@ export default function EventPage() {
   const [participants, setParticipants] = useState<ParticipantRow[]>([]);
   const [myPid, setMyPid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
 
   async function load() {
     const { data: ev } = await supabase.from("events").select("*").eq("id", id).single();
@@ -86,6 +87,7 @@ export default function EventPage() {
         .update({ status, responded_at: new Date().toISOString() })
         .eq("id", pid);
     }
+    setEditing(false);
     load();
   }
 
@@ -127,7 +129,7 @@ export default function EventPage() {
       </div>
 
       <div className="px-6 pt-6">
-        {!mine ? (
+        {!mine || editing ? (
           <>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -166,10 +168,7 @@ export default function EventPage() {
               </b>
             </p>
             <button
-              onClick={() => {
-                setMyPid(null);
-                sessionStorage.removeItem(`cuadrante_pid_${id}`);
-              }}
+              onClick={() => setEditing(true)}
               className="font-mono text-xs underline text-gray-500"
             >
               Cambiar
@@ -217,4 +216,4 @@ function ParticipantGroup({
       ))}
     </div>
   );
-        }
+}
