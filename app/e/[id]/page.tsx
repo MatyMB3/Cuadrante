@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { EventRow, EventType, ParticipantRow, TYPE_LABEL, fmtDate } from "@/lib/types";
 
@@ -16,6 +17,11 @@ export default function EventPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+  }, []);
 
   async function load() {
     const { data: ev } = await supabase.from("events").select("*").eq("id", id).single();
@@ -69,6 +75,7 @@ export default function EventPage() {
   const waitlist = participants.filter((p) => p.status === "waitlist");
   const isFull = !!event.max_slots && going.length >= event.max_slots;
   const isCancelled = event.status === "cancelled";
+  const isOwner = !!session && session.user.id === event.organizer_id;
   const mine = participants.find((p) => p.id === myPid);
 
   async function respond(status: "going" | "not_going" | "waitlist") {
@@ -208,7 +215,7 @@ export default function EventPage() {
         )}
 
         <div className="flex gap-3 mt-3">
-          {!isCancelled && (
+          {!isCancelled && isOwner && (
             <button
               onClick={() => setShowEditModal(true)}
               className="btn-press flex-1 rounded-xl py-3 border border-gray-300 text-ink font-display font-medium text-sm"
@@ -216,7 +223,7 @@ export default function EventPage() {
               Editar
             </button>
           )}
-          {!isCancelled && (
+          {!isCancelled && isOwner && (
             <button
               onClick={cancelEvent}
               className="btn-press flex-1 rounded-xl py-3 border border-notgoing text-notgoing font-display font-medium text-sm"
