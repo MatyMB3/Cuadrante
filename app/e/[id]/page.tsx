@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { EventRow, ParticipantRow, TYPE_LABEL, fmtDate } from "@/lib/types";
+import { EventRow, EventType, ParticipantRow, TYPE_LABEL, fmtDate } from "@/lib/types";
 
 export default function EventPage() {
   const params = useParams();
@@ -15,6 +15,7 @@ export default function EventPage() {
   const [myPid, setMyPid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   async function load() {
     const { data: ev } = await supabase.from("events").select("*").eq("id", id).single();
@@ -40,6 +41,11 @@ export default function EventPage() {
         { event: "*", schema: "public", table: "participants", filter: `event_id=eq.${id}` },
         () => load()
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "events", filter: `id=eq.${id}` },
+        () => load()
+      )
       .subscribe();
 
     return () => {
@@ -62,6 +68,7 @@ export default function EventPage() {
   const notGoing = participants.filter((p) => p.status === "not_going");
   const waitlist = participants.filter((p) => p.status === "waitlist");
   const isFull = !!event.max_slots && going.length >= event.max_slots;
+  const isCancelled = event.status === "cancelled";
   const mine = participants.find((p) => p.id === myPid);
 
   async function respond(status: "going" | "not_going" | "waitlist") {
@@ -99,6 +106,15 @@ export default function EventPage() {
     window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
   }
 
+  async function cancelEvent() {
+    const ok = confirm(
+      "Seguro que queres cancelar el evento? Los confirmados van a ver que se cancelo."
+    );
+    if (!ok) return;
+    await supabase.from("events").update({ status: "cancelled" }).eq("id", id);
+    load();
+  }
+
   return (
     <>
       <div className="scoreboard px-6 pt-8 pb-7">
@@ -113,23 +129,29 @@ export default function EventPage() {
         </p>
         {event.price ? <p className="text-sm opacity-80">${event.price}</p> : null}
 
-        <div className="mt-6">
-          <p className="font-mono text-4xl font-semibold">
-            {going.length}
-            {event.max_slots ? ` / ${event.max_slots}` : ""}
-          </p>
-          <p className="font-mono text-xs opacity-60 uppercase tracking-widest mt-1">
-            {event.max_slots
-              ? isFull
-                ? "Evento completo"
-                : `Faltan ${event.max_slots - going.length}`
-              : "Confirmados"}
-          </p>
-        </div>
+        {!isCancelled && (
+          <div className="mt-6">
+            <p className="font-mono text-4xl font-semibold">
+              {going.length}
+              {event.max_slots ? ` / ${event.max_slots}` : ""}
+            </p>
+            <p className="font-mono text-xs opacity-60 uppercase tracking-widest mt-1">
+              {event.max_slots
+                ? isFull
+                  ? "Evento completo"
+                  : `Faltan ${event.max_slots - going.length}`
+                : "Confirmados"}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="px-6 pt-6">
-        {!mine || editing ? (
+        {isCancelled ? (
+          <div className="bg-notgoing/10 border border-notgoing rounded-xl p-4 text-center">
+            <p className="font-display font-semibold text-notgoing">Este evento fue cancelado</p>
+          </div>
+        ) : !mine || editing ? (
           <>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -176,12 +198,33 @@ export default function EventPage() {
           </div>
         )}
 
-        <button
-          onClick={shareWhatsApp}
-          className="btn-press w-full mt-4 rounded-xl py-3 bg-[#25D366] text-white font-display font-semibold text-sm"
-        >
-          Compartir por WhatsApp
-        </button>
+        {!isCancelled && (
+          <button
+            onClick={shareWhatsApp}
+            className="btn-press w-full mt-4 rounded-xl py-3 bg-[#25D366] text-white font-display font-semibold text-sm"
+          >
+            Compartir por WhatsApp
+          </button>
+        )}
+
+        <div className="flex gap-3 mt-3">
+          {!isCancelled && (
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="btn-press flex-1 rounded-xl py-3 border border-gray-300 text-ink font-display font-medium text-sm"
+            >
+              Editar
+            </button>
+          )}
+          {!isCancelled && (
+            <button
+              onClick={cancelEvent}
+              className="btn-press flex-1 rounded-xl py-3 border border-notgoing text-notgoing font-display font-medium text-sm"
+            >
+              Cancelar evento
+            </button>
+          )}
+        </div>
 
         <div className="mt-7 space-y-4 pb-10">
           <ParticipantGroup label={"\u{1F7E2} Van"} list={going} />
@@ -190,6 +233,17 @@ export default function EventPage() {
           <ParticipantGroup label={"\u23F3 Lista de espera"} list={waitlist} muted />
         </div>
       </div>
+
+      {showEditModal && (
+        <EditEventModal
+          event={event}
+          onClose={() => setShowEditModal(false)}
+          onSaved={() => {
+            setShowEditModal(false);
+            load();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -214,6 +268,136 @@ function ParticipantGroup({
           {p.name}
         </p>
       ))}
+    </div>
+  );
+}
+
+function EditEventModal({
+  event,
+  onClose,
+  onSaved
+}: {
+  event: EventRow;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+
+  function toLocalInputValue(iso: string) {
+    const d = new Date(iso);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+      d.getHours()
+    )}:${pad(d.getMinutes())}`;
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSaving(true);
+    const fd = new FormData(e.currentTarget);
+    const maxSlots = fd.get("maxSlots");
+    const price = fd.get("price");
+
+    const { error } = await supabase
+      .from("events")
+      .update({
+        type: fd.get("type") as EventType,
+        title: fd.get("title") as string,
+        starts_at: new Date(fd.get("startsAt") as string).toISOString(),
+        location: (fd.get("location") as string) || null,
+        max_slots: maxSlots ? parseInt(maxSlots as string) : null,
+        price: price ? parseInt(price as string) : null
+      })
+      .eq("id", event.id);
+
+    setSaving(false);
+    if (error) {
+      alert("Hubo un problema guardando los cambios: " + error.message);
+      return;
+    }
+    onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50">
+      <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display text-xl font-semibold">Editar evento</h2>
+          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">
+            &times;
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="text-xs font-mono uppercase text-gray-400">Tipo</label>
+            <select
+              name="type"
+              defaultValue={event.type}
+              className="w-full border border-gray-200 rounded-lg p-3 mt-1"
+            >
+              {Object.entries(TYPE_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-mono uppercase text-gray-400">Titulo</label>
+            <input
+              name="title"
+              required
+              defaultValue={event.title}
+              className="w-full border border-gray-200 rounded-lg p-3 mt-1"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-mono uppercase text-gray-400">Fecha y hora</label>
+            <input
+              name="startsAt"
+              type="datetime-local"
+              required
+              defaultValue={toLocalInputValue(event.starts_at)}
+              className="w-full border border-gray-200 rounded-lg p-3 mt-1"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-mono uppercase text-gray-400">Lugar</label>
+            <input
+              name="location"
+              defaultValue={event.location || ""}
+              className="w-full border border-gray-200 rounded-lg p-3 mt-1"
+            />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-xs font-mono uppercase text-gray-400">Cupos (opcional)</label>
+              <input
+                name="maxSlots"
+                type="number"
+                min={1}
+                defaultValue={event.max_slots || ""}
+                className="w-full border border-gray-200 rounded-lg p-3 mt-1"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs font-mono uppercase text-gray-400">Precio (opcional)</label>
+              <input
+                name="price"
+                type="number"
+                min={0}
+                defaultValue={event.price || ""}
+                className="w-full border border-gray-200 rounded-lg p-3 mt-1"
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn-press w-full bg-ink text-white rounded-xl py-4 font-display font-semibold mt-2 disabled:opacity-50"
+          >
+            {saving ? "Guardando..." : "Guardar cambios"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
