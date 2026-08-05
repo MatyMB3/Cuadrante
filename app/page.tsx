@@ -79,7 +79,7 @@ export default function HomePage() {
                   {ev.going_count}{ev.max_slots ? `/${ev.max_slots}` : ""}
                 </p>
                 <p className="text-[10px] text-gray-400 uppercase tracking-wide">
-                  {ev.status === "full" ? "completo" : "confirmados"}
+                  {ev.status === "cancelled" ? "cancelado" : ev.status === "full" ? "completo" : "confirmados"}
                 </p>
               </div>
             </Link>
