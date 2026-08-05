@@ -14,7 +14,7 @@ const mono = IBM_Plex_Mono({
 const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"] });
 
 export const metadata = {
-  title: "Cuadrante â€” Quien juega?",
+  title: "Cuadrante \u2014 Quien juega?",
   description: "Organiza eventos deportivos entre amigos sin llenar el grupo de WhatsApp."
 };
 
