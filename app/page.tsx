@@ -2,19 +2,46 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase, DEFAULT_ORGANIZER_ID } from "@/lib/supabase";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import { EventRow, EventType, TYPE_LABEL, fmtDate } from "@/lib/types";
 
 export default function HomePage() {
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [events, setEvents] = useState<(EventRow & { going_count: number })[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loadingEvents, setLoadingEvents] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (session) {
+      ensureOrganizerRow(session).then(loadEvents);
+    } else if (session === null) {
+      setLoadingEvents(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  async function ensureOrganizerRow(s: Session) {
+    await supabase
+      .from("organizers")
+      .upsert({ id: s.user.id, email: s.user.email }, { onConflict: "id" });
+  }
 
   async function loadEvents() {
-    setLoading(true);
+    if (!session) return;
+    setLoadingEvents(true);
     const { data: evs } = await supabase
       .from("events")
       .select("*")
+      .eq("organizer_id", session.user.id)
       .order("starts_at", { ascending: true });
 
     if (evs) {
@@ -30,23 +57,56 @@ export default function HomePage() {
       );
       setEvents(withCounts as any);
     }
-    setLoading(false);
+    setLoadingEvents(false);
   }
 
-  useEffect(() => {
-    loadEvents();
-  }, []);
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    setEvents([]);
+  }
 
-  return (
-    <>
-      <div className="scoreboard px-6 pt-10 pb-8">
+  if (session === undefined) {
+    return <div className="p-6 text-sm text-gray-400">Cargando...</div>;
+  }
+
+  if (!session) {
+    return (
+      <div className="scoreboard px-6 pt-10 pb-10 flex-1 flex flex-col justify-center">
         <p className="font-mono text-xs tracking-[0.25em] uppercase opacity-70">Cuadrante</p>
         <h1 className="font-display text-3xl font-semibold mt-2 leading-tight">
           Quien<br />juega?
         </h1>
         <p className="text-sm opacity-70 mt-3">
-          Crea el evento, compartilo por WhatsApp,<br />mira quien confirma. Nada mas.
+          Crea el evento, compartilo por WhatsApp,
+          <br />
+          mira quien confirma. Nada mas.
         </p>
+        <Link
+          href="/login"
+          className="btn-press mt-6 w-full bg-white text-ink rounded-xl py-4 font-display font-semibold text-center"
+        >
+          Iniciar sesion para organizar
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="scoreboard px-6 pt-10 pb-8">
+        <div className="flex items-center justify-between">
+          <p className="font-mono text-xs tracking-[0.25em] uppercase opacity-70">Cuadrante</p>
+          <button
+            onClick={handleLogout}
+            className="font-mono text-[10px] uppercase tracking-widest opacity-60 underline"
+          >
+            Cerrar sesion
+          </button>
+        </div>
+        <h1 className="font-display text-3xl font-semibold mt-2 leading-tight">
+          Quien<br />juega?
+        </h1>
+        <p className="text-sm opacity-70 mt-3">{session.user.email}</p>
       </div>
 
       <div className="px-6 -mt-5">
@@ -60,7 +120,7 @@ export default function HomePage() {
 
       <div className="px-6 mt-8 pb-10 flex-1">
         <p className="font-mono text-xs tracking-widest uppercase text-gray-400 mb-3">
-          {loading ? "Cargando..." : events.length ? "Eventos" : "Todavia no hay eventos"}
+          {loadingEvents ? "Cargando..." : events.length ? "Mis eventos" : "Todavia no hay eventos"}
         </p>
         <div className="space-y-3">
           {events.map((ev) => (
@@ -85,13 +145,14 @@ export default function HomePage() {
             </Link>
           ))}
         </div>
-        {!loading && events.length === 0 && (
+        {!loadingEvents && events.length === 0 && (
           <p className="text-sm text-gray-400 mt-2">Crea el primero y compartilo por WhatsApp.</p>
         )}
       </div>
 
       {showForm && (
         <CreateEventModal
+          organizerId={session.user.id}
           onClose={() => setShowForm(false)}
           onCreated={() => {
             setShowForm(false);
@@ -104,9 +165,11 @@ export default function HomePage() {
 }
 
 function CreateEventModal({
+  organizerId,
   onClose,
   onCreated
 }: {
+  organizerId: string;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -120,7 +183,7 @@ function CreateEventModal({
     const price = fd.get("price");
 
     const { error } = await supabase.from("events").insert({
-      organizer_id: DEFAULT_ORGANIZER_ID,
+      organizer_id: organizerId,
       type: fd.get("type") as EventType,
       title: fd.get("title") as string,
       starts_at: new Date(fd.get("startsAt") as string).toISOString(),
