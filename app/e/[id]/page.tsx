@@ -92,8 +92,8 @@ export default function EventPage() {
   function shareWhatsApp() {
     const url = typeof window !== "undefined" ? window.location.href : "";
     const msg = `${TYPE_LABEL[event!.type]} ${event!.title}\n${fmtDate(event!.starts_at)}${
-      event!.location ? " Â· " + event!.location : ""
-    }${event!.price ? " Â· $" + event!.price : ""}\n\nConfirma aca ðŸ‘‰ ${url}`;
+      event!.location ? " \u00B7 " + event!.location : ""
+    }${event!.price ? " \u00B7 $" + event!.price : ""}\n\nConfirma aca \u{1F449} ${url}`;
     window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
   }
 
@@ -101,13 +101,13 @@ export default function EventPage() {
     <>
       <div className="scoreboard px-6 pt-8 pb-7">
         <Link href="/" className="font-mono text-xs opacity-60 uppercase tracking-widest">
-          â† Cuadrante
+          {"\u2190"} Cuadrante
         </Link>
         <p className="font-mono text-xs opacity-70 mt-3">{TYPE_LABEL[event.type]}</p>
         <h1 className="font-display text-2xl font-semibold mt-1 leading-tight">{event.title}</h1>
         <p className="text-sm opacity-80 mt-2">
           {fmtDate(event.starts_at)}
-          {event.location ? ` Â· ${event.location}` : ""}
+          {event.location ? ` \u00B7 ${event.location}` : ""}
         </p>
         {event.price ? <p className="text-sm opacity-80">${event.price}</p> : null}
 
@@ -135,13 +135,13 @@ export default function EventPage() {
                 disabled={isFull}
                 className="btn-press rounded-xl py-4 font-display font-semibold text-white bg-going disabled:opacity-40"
               >
-                âœ… Voy
+                {"\u2705"} Voy
               </button>
               <button
                 onClick={() => respond("not_going")}
                 className="btn-press rounded-xl py-4 font-display font-semibold text-white bg-notgoing"
               >
-                âŒ No voy
+                {"\u274C"} No voy
               </button>
             </div>
             {isFull && (
@@ -159,10 +159,10 @@ export default function EventPage() {
               Tu estado:{" "}
               <b>
                 {mine.status === "going"
-                  ? "ðŸŸ¢ Voy"
+                  ? "\u{1F7E2} Voy"
                   : mine.status === "not_going"
-                  ? "ðŸ”´ No voy"
-                  : "ðŸŸ¡ Suplente"}
+                  ? "\u{1F534} No voy"
+                  : "\u{1F7E1} Suplente"}
               </b>
             </p>
             <button
@@ -185,10 +185,10 @@ export default function EventPage() {
         </button>
 
         <div className="mt-7 space-y-4 pb-10">
-          <ParticipantGroup label="ðŸŸ¢ Van" list={going} />
-          <ParticipantGroup label="ðŸŸ¡ Pendientes" list={pending} muted />
-          <ParticipantGroup label="ðŸ”´ No van" list={notGoing} muted />
-          <ParticipantGroup label="â³ Lista de espera" list={waitlist} muted />
+          <ParticipantGroup label={"\u{1F7E2} Van"} list={going} />
+          <ParticipantGroup label={"\u{1F7E1} Pendientes"} list={pending} muted />
+          <ParticipantGroup label={"\u{1F534} No van"} list={notGoing} muted />
+          <ParticipantGroup label={"\u23F3 Lista de espera"} list={waitlist} muted />
         </div>
       </div>
     </>
@@ -217,4 +217,4 @@ function ParticipantGroup({
       ))}
     </div>
   );
-}
+        }
