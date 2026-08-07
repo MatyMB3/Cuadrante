@@ -182,23 +182,39 @@ function CreateEventModal({
     const maxSlots = fd.get("maxSlots");
     const price = fd.get("price");
 
-    const { error } = await supabase.from("events").insert({
-      organizer_id: organizerId,
-      type: fd.get("type") as EventType,
-      title: fd.get("title") as string,
-      starts_at: new Date(fd.get("startsAt") as string).toISOString(),
-      location: (fd.get("location") as string) || null,
-      max_slots: maxSlots ? parseInt(maxSlots as string) : null,
-      price: price ? parseInt(price as string) : null,
-      status: "open"
-    });
+    const { data: newEvent, error } = await supabase
+      .from("events")
+      .insert({
+        organizer_id: organizerId,
+        type: fd.get("type") as EventType,
+        title: fd.get("title") as string,
+        starts_at: new Date(fd.get("startsAt") as string).toISOString(),
+        location: (fd.get("location") as string) || null,
+        max_slots: maxSlots ? parseInt(maxSlots as string) : null,
+        price: price ? parseInt(price as string) : null,
+        status: "open"
+      })
+      .select()
+      .single();
 
     setSaving(false);
-    if (error) {
-      alert("Hubo un problema creando el evento: " + error.message);
+    if (error || !newEvent) {
+      alert("Hubo un problema creando el evento: " + error?.message);
       return;
     }
+
+    await createReminders(newEvent.id, newEvent.starts_at);
     onCreated();
+  }
+
+  async function createReminders(eventId: string, startsAt: string) {
+    const start = new Date(startsAt).getTime();
+    const rows = [
+      { event_id: eventId, type: "t24h", scheduled_for: new Date(start - 24 * 60 * 60 * 1000).toISOString() },
+      { event_id: eventId, type: "t6h", scheduled_for: new Date(start - 6 * 60 * 60 * 1000).toISOString() },
+      { event_id: eventId, type: "t2h", scheduled_for: new Date(start - 2 * 60 * 60 * 1000).toISOString() }
+    ];
+    await supabase.from("reminders").insert(rows);
   }
 
   return (
@@ -279,5 +295,3 @@ function CreateEventModal({
     </div>
   );
 }
-
-
