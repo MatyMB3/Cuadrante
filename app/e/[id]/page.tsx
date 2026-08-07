@@ -18,6 +18,7 @@ export default function EventPage() {
   const [editing, setEditing] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [notifStatus, setNotifStatus] = useState<"idle" | "asking" | "on" | "error">("idle");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -77,6 +78,69 @@ export default function EventPage() {
   const isCancelled = event.status === "cancelled";
   const isOwner = !!session && session.user.id === event.organizer_id;
   const mine = participants.find((p) => p.id === myPid);
+
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = atob(base64);
+    return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+  }
+
+  async function enableReminders() {
+    if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator)) {
+      alert("Tu navegador no soporta notificaciones. Proba desde Chrome.");
+      return;
+    }
+    setNotifStatus("asking");
+
+    let pid = myPid;
+    if (!pid) {
+      const name = prompt("Tu nombre para que te vean en la lista:");
+      if (!name) {
+        setNotifStatus("idle");
+        return;
+      }
+      const { data, error } = await supabase
+        .from("participants")
+        .insert({ event_id: id, name: name.trim(), status: "pending" })
+        .select()
+        .single();
+      if (error || !data) {
+        alert("No pudimos guardar tu nombre. Proba de nuevo.");
+        setNotifStatus("error");
+        return;
+      }
+      pid = data.id as string;
+      sessionStorage.setItem(`cuadrante_pid_${id}`, pid as string);
+      setMyPid(pid as string);
+    }
+
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setNotifStatus("error");
+        return;
+      }
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(
+          process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY as string
+        )
+      });
+      const json = sub.toJSON();
+      await supabase.from("push_subscriptions").insert({
+        participant_id: pid,
+        endpoint: json.endpoint,
+        p256dh: json.keys?.p256dh,
+        auth: json.keys?.auth
+      });
+      setNotifStatus("on");
+      load();
+    } catch (e) {
+      setNotifStatus("error");
+    }
+  }
 
   async function respond(status: "going" | "not_going" | "waitlist") {
     let pid = myPid;
@@ -183,6 +247,19 @@ export default function EventPage() {
                 Entrar como suplente
               </button>
             )}
+            {notifStatus === "on" ? (
+              <p className="text-center text-xs text-gray-400 mt-4">
+                {"\u{1F514}"} Te vamos a avisar si todavia no respondiste
+              </p>
+            ) : (
+              <button
+                onClick={enableReminders}
+                disabled={notifStatus === "asking"}
+                className="w-full text-center text-xs text-gray-400 underline mt-4"
+              >
+                {"\u{1F514}"} Todavia no se, avisenme despues
+              </button>
+            )}
           </>
         ) : (
           <div className="bg-white rounded-xl p-4 card flex items-center justify-between">
@@ -193,7 +270,9 @@ export default function EventPage() {
                   ? "\u{1F7E2} Voy"
                   : mine.status === "not_going"
                   ? "\u{1F534} No voy"
-                  : "\u{1F7E1} Suplente"}
+                  : mine.status === "waitlist"
+                  ? "\u{1F7E1} Suplente"
+                  : "\u{1F514} Todavia no respondiste"}
               </b>
             </p>
             <button
@@ -322,6 +401,24 @@ function EditEventModal({
       alert("Hubo un problema guardando los cambios: " + error.message);
       return;
     }
+
+    const start = new Date(fd.get("startsAt") as string).getTime();
+    const updates: [string, number][] = [
+      ["t24h", 24],
+      ["t6h", 6],
+      ["t2h", 2]
+    ];
+    for (const [type, hoursBefore] of updates) {
+      await supabase
+        .from("reminders")
+        .update({
+          scheduled_for: new Date(start - hoursBefore * 60 * 60 * 1000).toISOString(),
+          sent: false
+        })
+        .eq("event_id", event.id)
+        .eq("type", type);
+    }
+
     onSaved();
   }
 
