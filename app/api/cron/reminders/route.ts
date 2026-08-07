@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import webpush from "web-push";
 import { getAdminSupabase } from "@/lib/supabaseAdmin";
 
-webpush.setVapidDetails(
-  "mailto:soporte@cuadrante.app",
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY as string,
-  process.env.VAPID_PRIVATE_KEY as string
-);
+export const dynamic = "force-dynamic";
 
 const LABELS: Record<string, string> = {
   t24h: "manana",
@@ -19,6 +15,12 @@ export async function GET(req: NextRequest) {
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  webpush.setVapidDetails(
+    "mailto:soporte@cuadrante.app",
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY as string,
+    process.env.VAPID_PRIVATE_KEY as string
+  );
 
   const supabase = getAdminSupabase();
   const now = new Date();
